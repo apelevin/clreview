@@ -7,7 +7,7 @@ MVP сервиса для автоматической обработки док
 - Загрузка множественных DOCX файлов
 - Автоматическое преобразование документов в правовые позиции
 - Создание единого обзора судебной практики на основе всех документов
-- Двухшаговый pipeline обработки с использованием OpenAI API
+- 5-шаговый pipeline обработки с использованием OpenRouter API
 
 ## Установка
 
@@ -21,9 +21,14 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Добавьте ваш OpenAI API ключ в `.env.local`:
+3. Добавьте ваш OpenRouter API ключ в `.env.local`:
 ```
-OPENAI_API_KEY=your_openai_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+```
+
+Опционально, вы можете добавить дополнительные заголовки для отслеживания:
+```
+OPENROUTER_HTTP_REFERER=https://github.com/apelevin/review
 ```
 
 ## Запуск
@@ -61,7 +66,7 @@ npm start
 - Next.js 16 (App Router)
 - TypeScript
 - Tailwind CSS
-- OpenAI API
+- OpenRouter API
 - Mammoth (конвертация DOCX)
 
 

@@ -149,7 +149,7 @@ async function processDocumentStep0(
     const userContent = userPrompt ? `${userPrompt}\n\n${markdown}` : markdown;
 
     // Отправляем в LLM для получения правовой позиции (JSON)
-    const apiResponse = await callOpenAI(systemPrompt, userContent, 'gpt-5-mini', true);
+    const apiResponse = await callOpenAI(systemPrompt, userContent, 'x-ai/grok-4.1-fast');
     const legalPositionRaw = apiResponse.content;
 
     // Извлекаем JSON из ответа (убираем возможные markdown кодблоки и лишний текст)
@@ -245,7 +245,7 @@ async function processStep1(
     const userContent = userPrompt ? `${userPrompt}\n\n\`\`\`json\n${positionJson}\n\`\`\`` : positionJson;
 
     // Отправляем в LLM для создания карточки дела
-    const apiResponse = await callOpenAI(systemPrompt, userContent, 'gpt-5-mini', true);
+    const apiResponse = await callOpenAI(systemPrompt, userContent, 'google/gemini-2.5-flash-lite-preview-09-2025');
     const caseCardRaw = apiResponse.content;
 
     // Извлекаем JSON из ответа
@@ -330,7 +330,7 @@ async function processStep3(
     const userContent = userPrompt ? `${userPrompt}\n\n\`\`\`json\n${cardsJson}\n\`\`\`` : cardsJson;
 
     // Отправляем в LLM для создания скелета
-    const apiResponse = await callOpenAI(systemPrompt, userContent, 'gpt-5', true);
+    const apiResponse = await callOpenAI(systemPrompt, userContent, 'deepseek/deepseek-v3.2');
     const skeletonRaw = apiResponse.content;
 
     // Извлекаем JSON из ответа
@@ -397,7 +397,7 @@ async function processStep4(
       : `Скелет обзора:\n${skeletonJson}\n\nКарточки дел:\n${cardsJson}`;
 
     // Отправляем в LLM для создания финального обзора
-    const apiResponse = await callOpenAI(systemPrompt, userContent, 'gpt-5.1', true);
+    const apiResponse = await callOpenAI(systemPrompt, userContent, 'google/gemini-2.5-flash-preview-09-2025');
     const review = apiResponse.content;
 
     return {
@@ -450,7 +450,7 @@ export async function processDocumentsPipeline(
     const step0Stats: StepCostStatistics = {
       step: 0,
       stepName: 'Извлечение правовых позиций',
-      model: 'gpt-5-mini',
+      model: 'x-ai/grok-4.1-fast',
       calls: step0Results.length,
       tokens: { input: 0, cachedInput: 0, output: 0, total: 0 },
       cost: { input: 0, cachedInput: 0, output: 0, total: 0 },
@@ -524,7 +524,7 @@ export async function processDocumentsPipeline(
     const step1Stats: StepCostStatistics = {
       step: 1,
       stepName: 'Создание карточек дел',
-      model: 'gpt-5-mini',
+      model: 'google/gemini-2.5-flash-lite-preview-09-2025',
       calls: step1Results.length,
       tokens: { input: 0, cachedInput: 0, output: 0, total: 0 },
       cost: { input: 0, cachedInput: 0, output: 0, total: 0 },
@@ -598,7 +598,7 @@ export async function processDocumentsPipeline(
     const step3Stats: StepCostStatistics = {
       step: 3,
       stepName: 'Создание скелета обзора',
-      model: 'gpt-5',
+      model: 'deepseek/deepseek-v3.2',
       calls: 1,
       tokens: {
         input: (step3Usage.promptTokens || 0) - (step3Usage.cachedTokens || 0),
@@ -629,7 +629,7 @@ export async function processDocumentsPipeline(
     const step4Stats: StepCostStatistics = {
       step: 4,
       stepName: 'Генерация финального обзора',
-      model: 'gpt-5.1',
+      model: 'google/gemini-2.5-flash-preview-09-2025',
       calls: 1,
       tokens: {
         input: (step4Usage.promptTokens || 0) - (step4Usage.cachedTokens || 0),

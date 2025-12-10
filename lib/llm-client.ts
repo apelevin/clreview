@@ -2,16 +2,21 @@ import OpenAI from 'openai';
 import fs from 'fs/promises';
 import path from 'path';
 
-// Ленивая инициализация клиента OpenAI
+// Ленивая инициализация клиента OpenRouter
 let openaiInstance: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiInstance) {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY не установлен в переменных окружения');
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY не установлен в переменных окружения');
     }
     openaiInstance = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: process.env.OPENROUTER_API_KEY,
+      defaultHeaders: {
+        'HTTP-Referer': process.env.OPENROUTER_HTTP_REFERER || 'https://github.com/apelevin/review',
+        'X-Title': 'Legal Review Service',
+      },
     });
   }
   return openaiInstance;
@@ -24,52 +29,49 @@ interface ModelPricing {
   output: number;
 }
 
+// Цены для моделей OpenRouter (за токен, не за 1M токенов!)
+// Цены обновлены на основе данных из OpenRouter API
+// Внимание: OpenRouter возвращает цены за токен, поэтому умножаем напрямую на количество токенов
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  'gpt-5-mini': {
-    input: 0.25,
-    cached_input: 0.025,
-    output: 2.0,
+  // Step 0: xAI Grok 4.1 Fast (данные из OpenRouter API)
+  'x-ai/grok-4.1-fast': {
+    input: 0.0000002, // $0.0000002 за токен
+    cached_input: 0.00000002, // $0.00000002 за токен
+    output: 0.0000005, // $0.0000005 за токен
   },
-  'gpt-5': {
-    input: 1.25,
-    cached_input: 0.125,
-    output: 10.0,
+  // Step 1: Google Gemini 2.5 Flash Lite Preview (данные из OpenRouter API)
+  'google/gemini-2.5-flash-lite-preview-09-2025': {
+    input: 0.0000001, // $0.0000001 за токен
+    cached_input: 0.00000001, // $0.00000001 за токен
+    output: 0.0000004, // $0.0000004 за токен
   },
-  'gpt-5.1': {
-    input: 1.25,
-    cached_input: 0.125,
-    output: 10.0,
+  // Step 3: DeepSeek V3.2 (данные из OpenRouter API)
+  'deepseek/deepseek-v3.2': {
+    input: 0.00000026, // $0.00000026 за токен (исправлено с 0.00000027)
+    cached_input: 0.000000026, // $0.000000026 за токен
+    output: 0.00000039, // $0.00000039 за токен (исправлено с 0.00000041)
   },
-  // Fallback для неизвестных моделей (используем цены gpt-5.1)
-  'gpt-4o': {
-    input: 1.25,
-    cached_input: 0.125,
-    output: 10.0,
+  // Step 4: Google Gemini 2.5 Flash Preview (данные из OpenRouter API)
+  'google/gemini-2.5-flash-preview-09-2025': {
+    input: 0.0000003, // $0.0000003 за токен
+    cached_input: 0.00000003, // $0.00000003 за токен
+    output: 0.0000025, // $0.0000025 за токен
   },
-};
-
-// Цены для Flex режима (per 1M tokens) - в 2 раза дешевле Standard
-const MODEL_PRICING_FLEX: Record<string, ModelPricing> = {
-  'gpt-5-mini': {
-    input: 0.125,
-    cached_input: 0.0125,
-    output: 1.0,
+  // Старые модели (для совместимости) - цены за 1M токенов, нужно конвертировать
+  'openai/gpt-5-mini': {
+    input: 0.25 / 1_000_000, // Конвертировано из $0.25 / 1M tokens
+    cached_input: 0.025 / 1_000_000,
+    output: 2.0 / 1_000_000,
   },
-  'gpt-5': {
-    input: 0.625,
-    cached_input: 0.0625,
-    output: 5.0,
+  'openai/gpt-5': {
+    input: 1.25 / 1_000_000, // Конвертировано из $1.25 / 1M tokens
+    cached_input: 0.125 / 1_000_000,
+    output: 10.0 / 1_000_000,
   },
-  'gpt-5.1': {
-    input: 0.625,
-    cached_input: 0.0625,
-    output: 5.0,
-  },
-  // Fallback для неизвестных моделей (используем цены gpt-5.1)
-  'gpt-4o': {
-    input: 0.625,
-    cached_input: 0.0625,
-    output: 5.0,
+  'openai/gpt-5.1': {
+    input: 1.25 / 1_000_000, // Конвертировано из $1.25 / 1M tokens
+    cached_input: 0.125 / 1_000_000,
+    output: 10.0 / 1_000_000,
   },
 };
 
@@ -91,42 +93,30 @@ export interface APIResponse {
   content: string;
   usage: TokenUsage;
   cost: CostBreakdown;
-  usedFlex?: boolean;
-  fallbackToStandard?: boolean;
 }
 
-/**
- * Вспомогательная функция для задержки
- */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
- * Отправляет запрос к OpenAI API с системным промптом и пользовательским контентом
+ * Отправляет запрос к OpenRouter API с системным промптом и пользовательским контентом
  * @param systemPrompt - системный промпт
  * @param userContent - пользовательский контент (текст документа)
- * @param model - модель OpenAI (по умолчанию gpt-5.1)
- * @param useFlex - использовать Flex режим (дешевле, но может быть медленнее)
+ * @param model - модель OpenRouter (по умолчанию openai/gpt-5.1)
  * @returns Promise с ответом от модели, статистикой токенов и расходами
  */
 export async function callOpenAI(
   systemPrompt: string,
   userContent: string,
-  model: string = 'gpt-5.1',
-  useFlex: boolean = false
+  model: string = 'openai/gpt-5.1'
 ): Promise<APIResponse> {
   try {
     const openai = getOpenAIClient();
     
     let response;
     let usedModel = model;
-    let actuallyUsedFlex = useFlex;
-    let fallbackToStandard = false;
     
     // Функция для создания запроса
-    const createRequest = (flexMode: boolean) => {
-      const requestParams: any = {
+    const createRequest = () => {
+      return openai.chat.completions.create({
         model: usedModel,
         messages: [
           {
@@ -139,97 +129,15 @@ export async function callOpenAI(
           },
         ],
         temperature: 0.7,
-      };
-      
-      if (flexMode) {
-        requestParams.service_tier = 'flex';
-      }
-      
-      return openai.chat.completions.create(requestParams);
+      });
     };
     
-    // Если используем Flex, пробуем с retry логикой
-    if (useFlex) {
-      const maxRetries = 3;
-      const retryDelays = [2000, 4000, 8000]; // 2s, 4s, 8s
-      let lastError: any = null;
-      
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          response = await createRequest(true);
-          break; // Успешно, выходим из цикла
-        } catch (error: any) {
-          lastError = error;
-          
-          // Проверяем, это ли ошибка 429 Resource Unavailable
-          if (
-            error?.status === 429 &&
-            (error?.message?.includes('Resource Unavailable') ||
-             error?.message?.includes('resource_unavailable') ||
-             error?.code === 'resource_unavailable')
-          ) {
-            // Если это не последняя попытка, ждем и повторяем
-            if (attempt < maxRetries - 1) {
-              console.warn(
-                `Flex режим: Resource Unavailable (попытка ${attempt + 1}/${maxRetries}), повтор через ${retryDelays[attempt]}ms`
-              );
-              await delay(retryDelays[attempt]);
-              continue;
-            } else {
-              // Все попытки исчерпаны, fallback на Standard
-              console.warn(
-                `Flex режим: все попытки исчерпаны, переключаемся на Standard режим`
-              );
-              actuallyUsedFlex = false;
-              fallbackToStandard = true;
-              break;
-            }
-          } else {
-            // Другая ошибка, пробуем fallback на Standard
-            console.warn(
-              `Flex режим: получена ошибка ${error?.status || 'unknown'}, переключаемся на Standard режим`
-            );
-            actuallyUsedFlex = false;
-            fallbackToStandard = true;
-            break;
-          }
-        }
-      }
-      
-      // Если все retry неудачны, пробуем Standard режим
-      if (!response && fallbackToStandard) {
-        try {
-          response = await createRequest(false);
-        } catch (standardError: any) {
-          // Если Standard тоже не работает, пробуем fallback на другую модель
-          if (standardError?.status === 404 || standardError?.message?.includes('model') || standardError?.code === 'model_not_found') {
-            console.warn(`Модель ${model} недоступна, используем gpt-4o`);
-            usedModel = 'gpt-4o';
-            response = await createRequest(false);
-          } else {
-            throw standardError;
-          }
-        }
-      }
-    } else {
-      // Standard режим, без retry логики
-      try {
-        response = await createRequest(false);
-      } catch (modelError: any) {
-        // Если модель недоступна, пробуем fallback на gpt-4o
-        if (modelError?.status === 404 || modelError?.message?.includes('model') || modelError?.code === 'model_not_found') {
-          console.warn(`Модель ${model} недоступна, используем gpt-4o`);
-          usedModel = 'gpt-4o';
-          response = await createRequest(false);
-        } else {
-          throw modelError;
-        }
-      }
-    }
+    // Выполняем запрос
+    response = await createRequest();
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
-      throw new Error('Пустой ответ от OpenAI API');
+      throw new Error('Пустой ответ от OpenRouter API');
     }
 
     // Извлекаем статистику использования токенов
@@ -250,16 +158,14 @@ export async function callOpenAI(
     const cachedInputTokens = tokenUsage.cachedTokens || 0;
     const outputTokens = tokenUsage.completionTokens;
 
-    // Определяем цены в зависимости от модели и режима
-    // Используем Flex цены, если использовался Flex режим, иначе Standard
-    const pricing = actuallyUsedFlex
-      ? (MODEL_PRICING_FLEX[usedModel] || MODEL_PRICING_FLEX['gpt-5.1'])
-      : (MODEL_PRICING[usedModel] || MODEL_PRICING['gpt-5.1']);
+    // Определяем цены в зависимости от модели
+    const pricing = MODEL_PRICING[usedModel] || MODEL_PRICING['x-ai/grok-4.1-fast'];
 
+    // Цены в OpenRouter API указаны за токен, а не за 1M токенов
     const cost: CostBreakdown = {
-      inputCost: (inputTokens / 1_000_000) * pricing.input,
-      cachedInputCost: (cachedInputTokens / 1_000_000) * pricing.cached_input,
-      outputCost: (outputTokens / 1_000_000) * pricing.output,
+      inputCost: inputTokens * pricing.input,
+      cachedInputCost: cachedInputTokens * pricing.cached_input,
+      outputCost: outputTokens * pricing.output,
       totalCost: 0,
     };
 
@@ -269,12 +175,10 @@ export async function callOpenAI(
       content,
       usage: tokenUsage,
       cost,
-      usedFlex: actuallyUsedFlex,
-      fallbackToStandard,
     };
   } catch (error) {
     throw new Error(
-      `Ошибка при вызове OpenAI API: ${error instanceof Error ? error.message : String(error)}`
+      `Ошибка при вызове OpenRouter API: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 }

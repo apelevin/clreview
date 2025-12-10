@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import CostStatistics from './CostStatistics';
 
 interface StepCostStatistics {
@@ -128,104 +129,32 @@ export default function ReviewDisplay({ review, documents, costStatistics }: Rev
       )}
 
       <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <div className="prose prose-sm max-w-none">
-          <div
-            className="text-gray-800 leading-relaxed"
-            dangerouslySetInnerHTML={{
-              __html: (() => {
-                const lines = review.split('\n');
-                let inList = false;
-                let listType: 'ul' | 'ol' | null = null;
-                const result: string[] = [];
-
-                lines.forEach((line, index) => {
-                  const trimmed = line.trim();
-                  
-                  // Заголовки
-                  if (trimmed.startsWith('# ')) {
-                    if (inList) {
-                      result.push(`</${listType}>`);
-                      inList = false;
-                      listType = null;
-                    }
-                    result.push(`<h1 class="text-2xl font-bold mt-6 mb-4">${trimmed.substring(2)}</h1>`);
-                    return;
-                  }
-                  if (trimmed.startsWith('## ')) {
-                    if (inList) {
-                      result.push(`</${listType}>`);
-                      inList = false;
-                      listType = null;
-                    }
-                    result.push(`<h2 class="text-xl font-bold mt-5 mb-3">${trimmed.substring(3)}</h2>`);
-                    return;
-                  }
-                  if (trimmed.startsWith('### ')) {
-                    if (inList) {
-                      result.push(`</${listType}>`);
-                      inList = false;
-                      listType = null;
-                    }
-                    result.push(`<h3 class="text-lg font-semibold mt-4 mb-2">${trimmed.substring(4)}</h3>`);
-                    return;
-                  }
-
-                  // Списки
-                  if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                    if (!inList || listType !== 'ul') {
-                      if (inList && listType === 'ol') {
-                        result.push('</ol>');
-                      }
-                      result.push('<ul class="list-disc list-inside mb-3 space-y-1 ml-4">');
-                      inList = true;
-                      listType = 'ul';
-                    }
-                    result.push(`<li>${trimmed.substring(2)}</li>`);
-                    return;
-                  }
-                  
-                  if (/^\d+\.\s/.test(trimmed)) {
-                    if (!inList || listType !== 'ol') {
-                      if (inList && listType === 'ul') {
-                        result.push('</ul>');
-                      }
-                      result.push('<ol class="list-decimal list-inside mb-3 space-y-1 ml-4">');
-                      inList = true;
-                      listType = 'ol';
-                    }
-                    result.push(`<li>${trimmed.replace(/^\d+\.\s/, '')}</li>`);
-                    return;
-                  }
-
-                  // Пустая строка
-                  if (trimmed === '') {
-                    if (inList) {
-                      result.push(`</${listType}>`);
-                      inList = false;
-                      listType = null;
-                    }
-                    result.push('<br />');
-                    return;
-                  }
-
-                  // Обычный текст
-                  if (inList) {
-                    result.push(`</${listType}>`);
-                    inList = false;
-                    listType = null;
-                  }
-                  result.push(`<p class="mb-3">${line}</p>`);
-                });
-
-                // Закрываем список, если он остался открытым
-                if (inList && listType) {
-                  result.push(`</${listType}>`);
-                }
-
-                return result.join('');
-              })(),
+        <div className="prose prose-sm max-w-none prose-headings:font-bold prose-headings:text-gray-900 prose-p:text-gray-800 prose-p:leading-relaxed prose-ul:list-disc prose-ol:list-decimal prose-li:my-1 prose-strong:text-gray-900 prose-strong:font-semibold">
+          <ReactMarkdown
+            components={{
+              h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mt-6 mb-4 text-gray-900" {...props} />,
+              h2: ({ node, ...props }) => <h2 className="text-xl font-bold mt-5 mb-3 text-gray-900" {...props} />,
+              h3: ({ node, ...props }) => <h3 className="text-lg font-semibold mt-4 mb-2 text-gray-900" {...props} />,
+              h4: ({ node, ...props }) => <h4 className="text-base font-semibold mt-3 mb-2 text-gray-900" {...props} />,
+              p: ({ node, ...props }) => <p className="mb-3 text-gray-800 leading-relaxed" {...props} />,
+              ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-3 space-y-1 ml-4" {...props} />,
+              ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-3 space-y-1 ml-4" {...props} />,
+              li: ({ node, ...props }) => <li className="my-1 text-gray-800" {...props} />,
+              strong: ({ node, ...props }) => <strong className="font-semibold text-gray-900" {...props} />,
+              em: ({ node, ...props }) => <em className="italic" {...props} />,
+              code: ({ node, inline, ...props }: any) => 
+                inline ? (
+                  <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-900" {...props} />
+                ) : (
+                  <code className="block bg-gray-100 p-3 rounded text-sm font-mono text-gray-900 overflow-x-auto" {...props} />
+                ),
+              blockquote: ({ node, ...props }) => (
+                <blockquote className="border-l-4 border-gray-300 pl-4 italic my-4 text-gray-700" {...props} />
+              ),
             }}
-          />
+          >
+            {review}
+          </ReactMarkdown>
         </div>
       </div>
     </div>

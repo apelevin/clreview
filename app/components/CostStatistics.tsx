@@ -55,6 +55,13 @@ const formatCost = (cost: number | undefined | null): string => {
   if (cost === undefined || cost === null || isNaN(cost)) {
     return '$0.00';
   }
+  if (cost === 0) {
+    return '$0.00';
+  }
+  // Для очень маленьких чисел показываем больше знаков
+  if (cost < 0.0001) {
+    return `$${cost.toFixed(6)}`;
+  }
   if (cost < 0.01) {
     return `$${cost.toFixed(4)}`;
   }
