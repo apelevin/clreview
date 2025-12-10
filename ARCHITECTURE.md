@@ -48,10 +48,11 @@
 │              External Services                                │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │              OpenRouter API                          │   │
-│  │  - xai/grok-beta (Step 0)                           │   │
-│  │  - google/gemini-2.0-flash-exp (Step 1)             │   │
-│  │  - deepseek/deepseek-chat (Step 3)                  │   │
-│  │  - google/gemini-2.0-flash-exp (Step 4)             │   │
+│  │  - x-ai/grok-4.1-fast (Step 0)                      │   │
+│  │  - google/gemini-2.5-flash-lite-preview-09-2025     │   │
+│  │    (Step 1)                                         │   │
+│  │  - deepseek/deepseek-v3.2 (Step 3)                  │   │
+│  │  - google/gemini-2.5-flash-preview-09-2025 (Step 4) │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -74,20 +75,20 @@
 
 ```
 Шаг 0: Извлечение правовых позиций (параллельно для всех документов)
-  DOCX → Markdown → 10-level Legal Position (JSON)
-  Модель: openai/gpt-5-mini
+  DOCX → Markdown → 10-level Legal Position (JSON) + номер дела
+  Модель: x-ai/grok-4.1-fast
   
   Вход: DOCX файлы
-  Выход: LegalPosition[] (10 уровней структурированных данных)
+  Выход: LegalPosition[] (10 уровней структурированных данных, включая номер дела)
 
 ┌─────────────────────────────────────────────────────────────┐
 
 Шаг 1: Локальное сжатие (параллельно для всех позиций)
-  Legal Position → Case Card (компактный JSON)
-  Модель: openai/gpt-5-mini
+  Legal Position → Case Card (компактный JSON с номером дела)
+  Модель: google/gemini-2.5-flash-lite-preview-09-2025
   
   Вход: LegalPosition[]
-  Выход: CaseCard[] (краткие карточки дел)
+  Выход: CaseCard[] (краткие карточки дел с номерами дел)
 
 ┌─────────────────────────────────────────────────────────────┐
 
@@ -102,19 +103,19 @@
 
 Шаг 3: Агрегация (последовательно)
   Case Cards → Review Skeleton (структурированный JSON)
-  Модель: openai/gpt-5
+  Модель: deepseek/deepseek-v3.2
   
-  Вход: CaseCard[]
+  Вход: CaseCard[] (с номерами дел)
   Выход: ReviewSkeleton (матрица подходов, расхождения, тренды)
 
 ┌─────────────────────────────────────────────────────────────┐
 
 Шаг 4: Генерация финального обзора (последовательно)
-  Review Skeleton → Final Review (читаемый текст)
-  Модель: openai/gpt-5.1
+  Review Skeleton → Final Review (читаемый текст с цитированием номеров дел)
+  Модель: google/gemini-2.5-flash-preview-09-2025
   
-  Вход: ReviewSkeleton + CaseCard[]
-  Выход: Review (Markdown текст для юристов)
+  Вход: ReviewSkeleton + CaseCard[] (с номерами дел)
+  Выход: Review (Markdown текст для юристов с цитированием номеров дел)
 ```
 
 ---
@@ -123,7 +124,7 @@
 
 ### LegalPosition (10 уровней)
 Структурированное представление правовой позиции из судебного документа:
-- **Level 1**: Отрасль права, категория спора
+- **Level 1**: Отрасль права, категория спора, номер дела (`case_number`)
 - **Level 2**: Стороны, тип отношений
 - **Level 3**: Основные и вторичные требования
 - **Level 4**: Ключевые и вторичные нормы
@@ -134,6 +135,7 @@
 
 ### CaseCard
 Компактная карточка дела:
+- `caseNumber`: Номер дела для цитирования в обзоре
 - `summary`: Краткая фабула и предмет спора (1-2 строки)
 - `keyFindings`: Ключевые правовые выводы (3-5 буллетов)
 - `appliedNorms`: Применённые нормы (1-2 строки)
@@ -176,7 +178,8 @@
 
 #### `app/components/ReviewDisplay.tsx`
 Отображение финального обзора:
-- Рендеринг Markdown
+- Рендеринг Markdown с использованием библиотеки `react-markdown`
+- Поддержка всех элементов Markdown (заголовки, списки, жирный текст, код и т.д.)
 - Интеграция с CostStatistics
 
 #### `app/components/CostStatistics.tsx`
@@ -218,9 +221,10 @@
   - Расчёт стоимости на основе использования токенов
 
 **Ценообразование:**
-- `MODEL_PRICING`: Цены для моделей OpenRouter
+- `MODEL_PRICING`: Цены для моделей OpenRouter (за токен, не за 1M токенов!)
 - Отдельный учёт input, cached input, output токенов
-- Модели используют префикс `openai/` (например, `openai/gpt-5-mini`)
+- Цены умножаются напрямую на количество токенов
+- Модели используют префиксы провайдеров (например, `x-ai/grok-4.1-fast`, `google/gemini-2.5-flash-preview-09-2025`)
 
 **Возвращаемые данные:**
 - `content`: Текст ответа
@@ -231,11 +235,11 @@
 Основной pipeline обработки документов:
 
 **Функции шагов:**
-- `processDocumentStep0()`: DOCX → Markdown → Legal Position
-- `processStep1()`: Legal Position → Case Card
+- `processDocumentStep0()`: DOCX → Markdown → Legal Position (с извлечением номера дела)
+- `processStep1()`: Legal Position → Case Card (с передачей номера дела)
 - `processStep2()`: Формальная группировка
-- `processStep3()`: Case Cards → Review Skeleton
-- `processStep4()`: Review Skeleton → Final Review
+- `processStep3()`: Case Cards → Review Skeleton (с номерами дел в контексте)
+- `processStep4()`: Review Skeleton → Final Review (с цитированием номеров дел)
 
 **`processDocumentsPipeline()`:**
 - Оркестрация всех шагов
@@ -248,10 +252,10 @@
 **Сохранение результатов (`saveResults()`):**
 - Создание директории по timestamp сессии
 - Сохранение для каждого документа:
-  - `markdown.md`
-  - `legal-position.json`
-  - `case-card.json`
-- Сохранение `review-skeleton.json` и `review.md`
+  - `markdown.md` (исходный документ в Markdown)
+  - `legal-position.json` (10-уровневая позиция с номером дела в level1.case_number)
+  - `case-card.json` (карточка дела с номером дела в поле caseNumber)
+- Сохранение `review-skeleton.json` и `review.md` (финальный обзор с цитированием номеров дел)
 
 ---
 
@@ -259,13 +263,13 @@
 
 ### Выбор моделей по шагам
 
-| Шаг | Модель              | Обоснование                                    |
-|-----|---------------------|------------------------------------------------|
-| 0   | openai/gpt-5-mini   | Простое извлечение структурированных данных   |
-| 1   | openai/gpt-5-mini   | Простое сжатие структурированных данных       |
-| 2   | -                   | Формальный шаг, без LLM                        |
-| 3   | openai/gpt-5        | Сложная аналитика и агрегация                  |
-| 4   | openai/gpt-5.1      | Генерация финального текста высокого качества |
+| Шаг | Модель                                              | Обоснование                                    |
+|-----|-----------------------------------------------------|------------------------------------------------|
+| 0   | x-ai/grok-4.1-fast                                  | Простое извлечение структурированных данных   |
+| 1   | google/gemini-2.5-flash-lite-preview-09-2025        | Простое сжатие структурированных данных       |
+| 2   | -                                                   | Формальный шаг, без LLM                        |
+| 3   | deepseek/deepseek-v3.2                              | Сложная аналитика и агрегация                  |
+| 4   | google/gemini-2.5-flash-preview-09-2025              | Генерация финального текста высокого качества |
 
 ### Механизмы надёжности
 
@@ -304,10 +308,10 @@ processed/
 
 Система использует разделение промптов на SYSTEM и USER части:
 
-- **`step0-prompt.md`**: Извлечение 10-уровневой правовой позиции
-- **`step1-prompt.md`**: Сжатие позиции в карточку дела
+- **`step0-prompt.md`**: Извлечение 10-уровневой правовой позиции и номера дела
+- **`step1-prompt.md`**: Сжатие позиции в карточку дела с передачей номера дела
 - **`step3-prompt.md`**: Агрегация карточек в скелет обзора
-- **`step4-prompt.md`**: Генерация финального обзора
+- **`step4-prompt.md`**: Генерация финального обзора с обязательным цитированием номеров дел
 
 Формат промптов:
 ```markdown
@@ -334,6 +338,7 @@ processed/
 - **Mammoth 1.11.0**: Конвертация DOCX → Markdown
 - **Formidable 3.5.4**: Обработка загрузки файлов
 - **Tailwind CSS 4.1.17**: Стилизация UI
+- **react-markdown 10.1.0**: Рендеринг Markdown в React компонентах
 
 ---
 
