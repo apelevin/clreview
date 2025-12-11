@@ -2,6 +2,7 @@ import { convertDocxBufferToMarkdown } from './docx-to-markdown';
 import { callOpenAI, loadPrompt, loadPromptWithParts, TokenUsage, CostBreakdown } from './llm-client';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 
 export interface LegalPosition {
   level1?: {
@@ -707,7 +708,14 @@ async function saveResults(
   skeleton: ReviewSkeleton,
   review: string
 ): Promise<void> {
-  const processedDir = path.join(process.cwd(), 'processed');
+  // На Vercel используем /tmp, локально - processed/
+  let processedDir: string;
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    processedDir = path.join(os.tmpdir(), 'processed');
+  } else {
+    processedDir = path.join(process.cwd(), 'processed');
+  }
+  
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const sessionDir = path.join(processedDir, timestamp);
 

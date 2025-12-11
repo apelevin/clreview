@@ -2,9 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import os from 'os';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 минут
+
+// Получаем директорию для временных файлов
+// На Vercel используем /tmp, локально - uploads/
+function getUploadsDir(): string {
+  // Проверяем, работаем ли мы на Vercel (read-only файловая система)
+  // На Vercel доступна только /tmp для записи
+  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+    return join(os.tmpdir(), 'uploads');
+  }
+  return join(process.cwd(), 'uploads');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Создаем директорию для загрузок, если её нет
-    const uploadsDir = join(process.cwd(), 'uploads');
+    const uploadsDir = getUploadsDir();
     if (!existsSync(uploadsDir)) {
       mkdirSync(uploadsDir, { recursive: true });
     }
