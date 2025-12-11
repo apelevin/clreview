@@ -20,7 +20,7 @@ function getUploadsDir(): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { fileNames } = body;
+    const { fileNames, userContext } = body;
 
     if (!fileNames || !Array.isArray(fileNames) || fileNames.length === 0) {
       return NextResponse.json(
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     // Запускаем pipeline обработки
     // Для отслеживания прогресса можно использовать Server-Sent Events,
     // но для MVP используем простой подход
-    const result = await processDocumentsPipeline(files);
+    const result = await processDocumentsPipeline(files, undefined, userContext);
 
     // Логируем детали ошибок для отладки
     if (result.error) {

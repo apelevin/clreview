@@ -322,7 +322,8 @@ async function processStep2(caseCards: CaseCard[]): Promise<CaseCard[]> {
  */
 async function processStep3(
   caseCards: CaseCard[],
-  documents: DocumentProcessingResult[]
+  documents: DocumentProcessingResult[],
+  userContext?: string
 ): Promise<{ skeleton: ReviewSkeleton; cost: CostBreakdown; usage: TokenUsage }> {
   if (caseCards.length === 0) {
     throw new Error('Нет карточек для создания скелета обзора');
@@ -341,7 +342,13 @@ async function processStep3(
     }));
     
     const cardsJson = JSON.stringify(cardsData, null, 2);
-    const userContent = userPrompt ? `${userPrompt}\n\n\`\`\`json\n${cardsJson}\n\`\`\`` : cardsJson;
+    
+    // Добавляем пользовательский контекст, если он указан
+    let userContent = userPrompt ? `${userPrompt}\n\n` : '';
+    if (userContext && userContext.trim()) {
+      userContent += `## Контекст анализа:\n\n${userContext.trim()}\n\n---\n\n`;
+    }
+    userContent += `\`\`\`json\n${cardsJson}\n\`\`\``;
 
     // Отправляем в LLM для создания скелета
     const apiResponse = await callOpenAI(systemPrompt, userContent, 'deepseek/deepseek-v3.2');
@@ -391,7 +398,8 @@ async function processStep3(
 async function processStep4(
   skeleton: ReviewSkeleton,
   caseCards: CaseCard[],
-  documents: DocumentProcessingResult[]
+  documents: DocumentProcessingResult[],
+  userContext?: string
 ): Promise<{ review: string; cost: CostBreakdown; usage: TokenUsage }> {
   try {
     // Загружаем промпт для шага 4
@@ -407,9 +415,12 @@ async function processStep4(
     }));
     const cardsJson = JSON.stringify(cardsContext, null, 2);
     
-    const userContent = userPrompt
-      ? `${userPrompt}\n\n## Скелет обзора:\n\`\`\`json\n${skeletonJson}\n\`\`\`\n\n## Карточки дел:\n\`\`\`json\n${cardsJson}\n\`\`\``
-      : `Скелет обзора:\n${skeletonJson}\n\nКарточки дел:\n${cardsJson}`;
+    // Добавляем пользовательский контекст, если он указан
+    let userContent = userPrompt ? `${userPrompt}\n\n` : '';
+    if (userContext && userContext.trim()) {
+      userContent += `## Контекст анализа:\n\n${userContext.trim()}\n\n**Важно:** При создании обзора обязательно учитывай указанный контекст и угол зрения. Адаптируй анализ, структуру и выводы под этот контекст.\n\n---\n\n`;
+    }
+    userContent += `## Скелет обзора:\n\`\`\`json\n${skeletonJson}\n\`\`\`\n\n## Карточки дел:\n\`\`\`json\n${cardsJson}\n\`\`\``;
 
     // Отправляем в LLM для создания финального обзора
     const apiResponse = await callOpenAI(systemPrompt, userContent, 'google/gemini-2.5-flash-preview-09-2025');
@@ -435,7 +446,8 @@ async function processStep4(
  */
 export async function processDocumentsPipeline(
   files: Array<{ fileName: string; buffer: Buffer }>,
-  onProgress?: (step: number, current: number, total: number, message: string) => void
+  onProgress?: (step: number, current: number, total: number, message: string) => void,
+  userContext?: string
 ): Promise<PipelineResult> {
   const costStatistics: CostStatistics = {
     steps: [],
@@ -603,7 +615,7 @@ export async function processDocumentsPipeline(
     if (onProgress) {
       onProgress(3, 1, 1, 'Создание скелета обзора...');
     }
-    const step3Result = await processStep3(groupedCards, updatedDocuments);
+    const step3Result = await processStep3(groupedCards, updatedDocuments, userContext);
     const skeleton = step3Result.skeleton;
 
     // Собираем статистику шага 3
@@ -634,7 +646,7 @@ export async function processDocumentsPipeline(
     if (onProgress) {
       onProgress(4, 1, 1, 'Генерация финального обзора...');
     }
-    const step4Result = await processStep4(skeleton, groupedCards, updatedDocuments);
+    const step4Result = await processStep4(skeleton, groupedCards, updatedDocuments, userContext);
     const review = step4Result.review;
 
     // Собираем статистику шага 4

@@ -31,6 +31,18 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 OPENROUTER_HTTP_REFERER=https://github.com/apelevin/review
 ```
 
+## Деплой на Vercel
+
+**Важно:** На Vercel переменные окружения из `.env.local` не используются автоматически. Необходимо добавить их в настройках проекта:
+
+1. Откройте проект на [Vercel Dashboard](https://vercel.com/dashboard)
+2. Перейдите в **Settings** → **Environment Variables**
+3. Добавьте переменные:
+   - `OPENROUTER_API_KEY` = ваш API ключ
+   - `OPENROUTER_HTTP_REFERER` = `https://github.com/apelevin/review` (опционально)
+4. Выберите окружения (Production, Preview, Development)
+5. **Перезапустите деплой** после добавления переменных (Deployments → ... → Redeploy)
+
 ## Запуск
 
 Разработка:

@@ -18,6 +18,7 @@ export default function Home() {
   const [documents, setDocuments] = useState<ProcessedDocument[]>([]);
   const [costStatistics, setCostStatistics] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [userContext, setUserContext] = useState<string>('');
   const [progress, setProgress] = useState({ 
     step: 0, 
     current: 0, 
@@ -48,7 +49,10 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fileNames }),
+        body: JSON.stringify({ 
+          fileNames,
+          userContext: userContext.trim() || undefined, // Передаем только если не пустой
+        }),
       });
 
       const data = await response.json();
@@ -85,6 +89,7 @@ export default function Home() {
     setDocuments([]);
     setCostStatistics(null);
     setError(null);
+    setUserContext('');
     setProgress({ step: 0, current: 0, total: 0, message: '' });
   };
 
@@ -102,10 +107,29 @@ export default function Home() {
           </div>
 
           {!review && (
-            <DocumentUpload
-              onUploadComplete={handleUploadComplete}
-              disabled={isProcessing}
-            />
+            <>
+              <div className="mb-6">
+                <label htmlFor="userContext" className="block text-sm font-medium text-gray-700 mb-2">
+                  Контекст анализа (опционально)
+                </label>
+                <textarea
+                  id="userContext"
+                  value={userContext}
+                  onChange={(e) => setUserContext(e.target.value)}
+                  placeholder="Укажите контекст или угол зрения для анализа судебной практики. Например: 'Проанализируй с точки зрения защиты прав потребителей' или 'Сфокусируйся на вопросах доказывания'"
+                  rows={4}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  disabled={isProcessing}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Этот контекст будет использован для кастомизации анализа и формирования обзора
+                </p>
+              </div>
+              <DocumentUpload
+                onUploadComplete={handleUploadComplete}
+                disabled={isProcessing}
+              />
+            </>
           )}
 
           <ProcessingStatus

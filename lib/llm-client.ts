@@ -7,9 +7,31 @@ let openaiInstance: OpenAI | null = null;
 
 function getOpenAIClient(): OpenAI {
   if (!openaiInstance) {
+    // Отладочная информация для диагностики на Vercel
+    const envInfo = {
+      VERCEL: process.env.VERCEL,
+      NODE_ENV: process.env.NODE_ENV,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      hasApiKey: !!process.env.OPENROUTER_API_KEY,
+      apiKeyLength: process.env.OPENROUTER_API_KEY?.length || 0,
+    };
+    
     if (!process.env.OPENROUTER_API_KEY) {
-      throw new Error('OPENROUTER_API_KEY не установлен в переменных окружения');
+      console.error('OPENROUTER_API_KEY отсутствует. Информация об окружении:', envInfo);
+      const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+      const errorMessage = isVercel
+        ? `OPENROUTER_API_KEY не установлен в переменных окружения Vercel. Добавьте переменную в настройках проекта: Settings → Environment Variables. Убедитесь, что переменная добавлена для окружения "${process.env.VERCEL_ENV || 'Production'}" и перезапустите деплой.`
+        : 'OPENROUTER_API_KEY не установлен в переменных окружения. Создайте файл .env.local и добавьте OPENROUTER_API_KEY=your_key';
+      throw new Error(errorMessage);
     }
+    
+    // Логируем успешную инициализацию (без ключа)
+    console.log('OpenRouter клиент инициализирован. Окружение:', {
+      VERCEL: process.env.VERCEL,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      NODE_ENV: process.env.NODE_ENV,
+    });
+    
     openaiInstance = new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
       apiKey: process.env.OPENROUTER_API_KEY,
